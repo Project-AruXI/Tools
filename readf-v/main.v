@@ -10,11 +10,11 @@ fn showFileHeader(hdr &AOEFFheader) {
 	println("    ID: ${hdr.hID[0]:x} ${hdr.hID[1]:x} ${hdr.hID[2]:x} ${hdr.hID[3]:x}")
 	
 	typeStr := match hdr.hType {
-		0 { "Executable" }
-		1 { "Kernel" }
-		2 { "Dynamic Library" }
-		3 { "Object" }
-		4 { "Static Library" }
+		aht_exec { "Executable" }
+		aht_kern { "Kernel" }
+		aht_dlib { "Dynamic Library" }
+		aht_aobj { "Object" }
+		aht_slib { "Static Library" }
 		else { "${hdr.hType}" }
 	}
 
@@ -101,16 +101,16 @@ fn showSymbolTable(buff &u8, hdr &AOEFFheader) {
 		}
 
 		symbTypeStr := match symbType {
-			0 { "NOTYPE" }
-			1 { "ABS" }
-			2 { "FUNC" }
-			3 { "OBJECT" }
+			se_none_t { "NOTYPE" }
+			se_absv_t { "ABS" }
+			se_func_t { "FUNC" }
+			se_obj_t { "OBJECT" }
 			else { "${symbType}" }
 		}
 
 		symbLocStr := match symbLoc {
-			0 { "LOCAL" }
-			1 { "GLOBAL" }
+			se_local { "LOCAL" }
+			se_globl { "GLOBAL" }
 			else { "${symbLoc}" }
 		}
 

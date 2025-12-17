@@ -15,21 +15,21 @@ struct AOEFFheader {
 }
 
 // Header ID and file type constants (converted from C macros)
-const	AH_ID0 = u8(0xAE)
-const	AH_ID1 = u8(0x41) // 'A'
-const	AH_ID2 = u8(0x45) // 'E'
-const	AH_ID3 = u8(0x46) // 'F'
+const	ah_id0 = u8(0xAE)
+const	ah_id1 = u8(0x41) // 'A'
+const	ah_id2 = u8(0x45) // 'E'
+const	ah_id3 = u8(0x46) // 'F'
 
-const	AHID_0 = 0
-const	AHID_1 = 1
-const	AHID_2 = 2
-const	AHID_3 = 3
+const	ahid_0 = 0
+const	ahid_1 = 1
+const	ahid_2 = 2
+const	ahid_3 = 3
 
-const	AHT_EXEC = 0 // Executable
-const	AHT_KERN = 1 // Kernel
-const	AHT_DLIB = 2 // Dynamic library
-const	AHT_AOBJ = 3 // Object file
-const	AHT_SLIB = 4 // Static library
+const	aht_exec = 0 // Executable
+const	aht_kern = 1 // Kernel
+const	aht_dlib = 2 // Dynamic library
+const	aht_aobj = 3 // Object file
+const	aht_slib = 4 // Static library
 
 struct AOEFFSectHeader {
 	shSectName [8]i8 // name of the section
@@ -47,7 +47,7 @@ struct AOEFFSymbEntry {
 }
 
 // Symbol table helper constants and inline functions (converted from C macros)
-const SE_SECT_UNDEF  = u32(0xFFFFFFFF)
+const se_sect_undef  = u32(0xFFFFFFFF)
 
 @[inline]
 pub fn se_get_type(i u8) u8 {
@@ -64,17 +64,17 @@ pub fn se_set_info(t u8, l u8) u8 {
 	return (t << 4) | (l & 0xf)
 }
 
-const	SE_NONE_T = 0
-const	SE_ABSV_T = 1
-const	SE_FUNC_T = 2
-const	SE_OBJ_T = 3
-const	SE_OBJ_ARR_T = 4
-const	SE_OBJ_STRUCT_T = 5
-const	SE_OBJ_UNION_T = 6
-const	SE_OBJ_PTR_T = 7
+const	se_none_t = 0
+const	se_absv_t = 1
+const	se_func_t = 2
+const	se_obj_t = 3
+const	se_obj_arr_t = 4
+const	se_obj_struct_t = 5
+const	se_obj_union_t = 6
+const	se_obj_ptr_t = 7
 
-const	SE_LOCAL = 0
-const	SE_GLOBL = 1
+const	se_local = 0
+const	se_globl = 1
 
 // For external symbols
 // Extra object types, not necessary
@@ -105,10 +105,10 @@ struct AOEFFRelTableDir {
 }
 
 // Relocation type constants
-const	RE_ARU32_ABS14 = 0
-const	RE_ARU32_MEM9 = 1
-const	RE_ARU32_IR24 = 2
-const	RE_ARU32_IR19 = 3
+const	re_aru32_abs14 = 0
+const	re_aru32_mem9 = 1
+const	re_aru32_ir24 = 2
+const	re_aru32_ir19 = 3
 
 struct AOEFFDyLibEnt {
 	dlName u32 // index of the dynamic library name in dynamic string table
