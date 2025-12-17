@@ -172,7 +172,7 @@ pub fn main() !void {
 
     _ = try file.readAll(buff);
 
-    const hdr:*c.AOEFFheader = @alignCast(@ptrCast(buff.ptr));
+    const hdr:*c.AOEFFheader = @alignCast(std.mem.bytesAsValue(c.AOEFFheader, buff.ptr));
     print("hdr ptr {*}\n", .{hdr});
 
     if (opts.args.viewAll) {
