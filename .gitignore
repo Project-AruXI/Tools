@@ -2,3 +2,5 @@ out/
 .vscode/
 **/*.ao
 **/*.s
+readf-zig/
+readf-c3/

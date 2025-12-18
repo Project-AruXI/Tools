@@ -159,6 +159,12 @@ fn showStringTable(buff &u8, hdr &AOEFFheader) {
 	println("")
 	
 }
+fn showDynSymbolTable() {
+	// Not implemented yet
+}
+fn showRelocationTable() {
+	// Not implemented yet
+}
 
 
 fn main() {
@@ -170,8 +176,10 @@ fn main() {
 	fp.skip_executable()
 
 	mut viewSymbolTable := fp.bool("view-symbol-table", `s`, false, "Display the symbol table")
+	mut viewDynSymbTable := fp.bool("view-dyn-symbol-table", `d`, false, "Display the dynamic symbol table (Not implemented)")
 	mut viewStrTable := fp.bool("view-string-table", `t`, false, "Display the string table")
 	mut viewSectHeader := fp.bool("view-section-header", `h`, false, "Display the section header table")
+	mut viewRelocTable := fp.bool("view-relocation-table", `r`, false, "Display the relocation table (Not implemented)")
 	mut viewHeader := fp.bool("view-header", `H`, false, "Display the file header")
 	viewAll := fp.bool("view-all", `a`, false, "Equivalent to -s -t -h -H")
 
@@ -220,13 +228,21 @@ fn main() {
 
 	if viewAll {
 		viewSymbolTable = true
+		viewDynSymbTable = true
 		viewStrTable = true
 		viewSectHeader = true
+		viewRelocTable = true
 		viewHeader = true
 	}
 	
 	if viewHeader { showFileHeader(hdr); }
 	if viewSectHeader { showSectionHeaders(buff, hdr); }
 	if viewSymbolTable { showSymbolTable(buff, hdr); }
+	if viewDynSymbTable {
+		println(term.yellow("Dynamic Symbol Table viewing not implemented yet"))
+	}
+	if viewRelocTable {
+		println(term.yellow("Relocation Table viewing not implemented yet"))
+	}
 	if viewStrTable { showStringTable(buff, hdr); }
 }
