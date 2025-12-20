@@ -169,9 +169,9 @@ fn showRelocationTable() {
 
 fn main() {
 	mut fp := flag.new_flag_parser(os.args)
-	fp.application("readf-v")
+	fp.application("readf")
 	fp.version("0.0.1")
-	fp.description("Description of the application")
+	fp.description("Read the AOEFF binary file format.")
 	fp.arguments_description("file")
 	fp.skip_executable()
 
@@ -195,7 +195,7 @@ fn main() {
 	}
 
 	// Make sure a flag is present before checking file prescence
-	if !viewSymbolTable && !viewStrTable && !viewSectHeader && !viewHeader && !viewAll {
+	if !viewSymbolTable && !viewDynSymbTable && !viewStrTable && !viewSectHeader && !viewRelocTable && !viewHeader && !viewAll {
 		println(term.red("No flag is present"))
 		println(fp.usage())
 		return
