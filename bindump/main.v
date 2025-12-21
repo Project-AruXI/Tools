@@ -4,17 +4,27 @@ import flag
 import os
 import term
 
+import aoefv { 
+	AOEFFheader, AOEFFSectHeader, AOEFFSymbEntry, AOEFFStrTab, AOEFFRelStrTab, AOEFFRelEntry, AOEFFRelTab, AOEFFRelTableDir,
+	AOEFFDyLibEntry, AOEFFDyLibTab, AOEFFDyStrTab, AOEFFImportEntry, AOEFFImportTab,
+	se_get_type, se_get_loc, 
+	AOEFBinFormatType
+}
+import disassembler {
+	DisassemblerOptions, disassemble
+}
+
 
 fn showFileHeader(hdr &AOEFFheader) {
 	println("AOEFF Header:")
 	println("    ID: ${hdr.hID[0]:x} ${hdr.hID[1]:x} ${hdr.hID[2]:x} ${hdr.hID[3]:x}")
 	
 	typeStr := match hdr.hType {
-		aht_exec { "Executable" }
-		aht_kern { "Kernel" }
-		aht_dlib { "Dynamic Library" }
-		aht_aobj { "Object" }
-		aht_slib { "Static Library" }
+		aoefv.aht_exec { "Executable" }
+		aoefv.aht_kern { "Kernel" }
+		aoefv.aht_dlib { "Dynamic Library" }
+		aoefv.aht_aobj { "Object" }
+		aoefv.aht_slib { "Static Library" }
 		else { "${hdr.hType}" }
 	}
 
@@ -101,16 +111,16 @@ fn showSymbolTable(buff &u8, hdr &AOEFFheader) {
 		}
 
 		symbTypeStr := match symbType {
-			se_none_t { "NOTYPE" }
-			se_absv_t { "ABS" }
-			se_func_t { "FUNC" }
-			se_obj_t { "OBJECT" }
+			aoefv.se_none_t { "NOTYPE" }
+			aoefv.se_absv_t { "ABS" }
+			aoefv.se_func_t { "FUNC" }
+			aoefv.se_obj_t { "OBJECT" }
 			else { "${symbType}" }
 		}
 
 		symbLocStr := match symbLoc {
-			se_local { "LOCAL" }
-			se_globl { "GLOBAL" }
+			aoefv.se_local { "LOCAL" }
+			aoefv.se_globl { "GLOBAL" }
 			else { "${symbLoc}" }
 		}
 
@@ -165,14 +175,13 @@ fn showDynSymbolTable(buff &u8, hdr &AOEFFheader) {
 fn showRelocationTable(buff &u8, hdr &AOEFFheader) {
 	// Not implemented yet
 }
-fn showCodeDissassembly(buff &u8, hdr &AOEFFheader) {}
-fn showDissassembly(buff &u8, hdr &AOEFFheader) {}
+
 
 fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application("bindump")
 	fp.version("0.0.1")
-	fp.description("Description of the application")
+	fp.description("Binary dump and disassembler for AOEFF files.")
 	fp.arguments_description("file")
 	fp.skip_executable()
 
@@ -182,10 +191,11 @@ fn main() {
 	mut viewSectHeader := fp.bool("view-section-header", `h`, false, "Display the section header table")
 	mut viewRelocTable := fp.bool("view-relocation-table", `r`, false, "Display the relocation table (Not implemented)")
 	mut viewHeader := fp.bool("view-header", `H`, false, "Display the file header")
-	mut dissassembleCode := fp.bool("disassemble", `d`, false, "Dissassemble code sections")
-	mut dissassembleAll := fp.bool("disassemble-all", `D`, false, "Dissassemble all sections")
+	mut disassembleCode := fp.bool("disassemble", `d`, false, "Disassemble code sections")
+	mut disassembleAll := fp.bool("disassemble-all", `D`, false, "Disassemble all sections")
 	mut viewAll := fp.bool("view-all", `a`, false, "Equivalent to -s -t -h -H")
 
+	mut useColor := fp.bool("color", `c`, true, "Use colored output for disassembly")
 	args := fp.finalize() or {
 		eprintln(err)
 		println(fp.usage())
@@ -198,7 +208,7 @@ fn main() {
 	}
 
 	// Make sure a flag is present before checking file prescence
-	if !viewSymbolTable && !viewDynSymbTable && !viewStrTable && !viewSectHeader && !viewRelocTable && !viewHeader && !dissassembleCode && !dissassembleAll && !viewAll {
+	if !viewSymbolTable && !viewDynSymbTable && !viewStrTable && !viewSectHeader && !viewRelocTable && !viewHeader && !disassembleCode && !disassembleAll && !viewAll {
 		println(term.red("No flag is present"))
 		println(fp.usage())
 		return
@@ -237,7 +247,12 @@ fn main() {
 		viewRelocTable = true
 		viewHeader = true
 	}
-	
+
+	mut options := DisassemblerOptions{
+		useColor: useColor
+		showText: disassembleCode || disassembleAll
+	}
+
 	if viewHeader { showFileHeader(hdr); }
 	if viewSectHeader { showSectionHeaders(buff, hdr); }
 	if viewSymbolTable { showSymbolTable(buff, hdr); }
@@ -248,6 +263,5 @@ fn main() {
 		println(term.yellow("Relocation Table viewing not implemented yet"))
 	}
 	if viewStrTable { showStringTable(buff, hdr); }
-	if dissassembleCode { showCodeDissassembly(buff, hdr); }
-	if dissassembleAll { showDissassembly(buff, hdr); }
+	if disassembleCode { disassemble(buff, hdr, &options) }
 }
