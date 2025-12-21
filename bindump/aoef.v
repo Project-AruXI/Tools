@@ -1,6 +1,7 @@
-module main
+module aoefv
 
-struct AOEFFheader {
+pub struct AOEFFheader {
+pub:
 	hID      [4]u8
 	hType    u32
 	hEntry   u32
@@ -15,30 +16,32 @@ struct AOEFFheader {
 }
 
 // Header ID and file type constants (converted from C macros)
-const	ah_id0 = u8(0xAE)
-const	ah_id1 = u8(0x41) // 'A'
-const	ah_id2 = u8(0x45) // 'E'
-const	ah_id3 = u8(0x46) // 'F'
+pub const	ah_id0 = u8(0xAE)
+pub const	ah_id1 = u8(0x41) // 'A'
+pub const	ah_id2 = u8(0x45) // 'E'
+pub const	ah_id3 = u8(0x46) // 'F'
 
-const	ahid_0 = 0
-const	ahid_1 = 1
-const	ahid_2 = 2
-const	ahid_3 = 3
+pub const	ahid_0 = 0
+pub const	ahid_1 = 1
+pub const	ahid_2 = 2
+pub const	ahid_3 = 3
 
-const	aht_exec = 0 // Executable
-const	aht_kern = 1 // Kernel
-const	aht_dlib = 2 // Dynamic library
-const	aht_aobj = 3 // Object file
-const	aht_slib = 4 // Static library
+pub const	aht_exec = 0 // Executable
+pub const	aht_kern = 1 // Kernel
+pub const	aht_dlib = 2 // Dynamic library
+pub const	aht_aobj = 3 // Object file
+pub const	aht_slib = 4 // Static library
 
-struct AOEFFSectHeader {
+pub struct AOEFFSectHeader {
+pub:
 	shSectName [8]i8 // name of the section
 	shSectOff u32 // offset of the section
 	shSectSize u32 // size of the section
 	shSectRel u32 // index of the relocation table tied to this section
 }
 
-struct AOEFFSymbEntry {
+pub struct AOEFFSymbEntry {
+pub:
 	seSymbName u32 // index of the symbol name in the string table
 	seSymbSize u32 // size of the data that the symbol is referring to
 	seSymbVal u32 // value of the symbol
@@ -47,7 +50,7 @@ struct AOEFFSymbEntry {
 }
 
 // Symbol table helper constants and inline functions (converted from C macros)
-const se_sect_undef  = u32(0xFFFFFFFF)
+pub const se_sect_undef  = u32(0xFFFFFFFF)
 
 @[inline]
 pub fn se_get_type(i u8) u8 {
@@ -64,77 +67,87 @@ pub fn se_set_info(t u8, l u8) u8 {
 	return (t << 4) | (l & 0xf)
 }
 
-const	se_none_t = 0
-const	se_absv_t = 1
-const	se_func_t = 2
-const	se_obj_t = 3
-const	se_obj_arr_t = 4
-const	se_obj_struct_t = 5
-const	se_obj_union_t = 6
-const	se_obj_ptr_t = 7
+pub const	se_none_t = 0
+pub const	se_absv_t = 1
+pub const	se_func_t = 2
+pub const	se_obj_t = 3
+pub const	se_obj_arr_t = 4
+pub const	se_obj_struct_t = 5
+pub const	se_obj_union_t = 6
+pub const	se_obj_ptr_t = 7
 
-const	se_local = 0
-const	se_globl = 1
+pub const	se_local = 0
+pub const	se_globl = 1
 
 // For external symbols
 // Extra object types, not necessary
-struct AOEFFStrTab {
+pub struct AOEFFStrTab {
+pub:
 	stStrs &i8
 }
 
-struct AOEFFRelStrTab {
+pub struct AOEFFRelStrTab {
+pub:
 	rstStrs &i8
 }
 
-struct AOEFFRelEnt {
+pub struct AOEFFRelEntry {
+pub:
 	reOff u32 // offset from the start of the section
 	reSymb u32 // index of the symbol in symbol table
 	reType u8 // type of relocation (RE_ARU32_*)
 }
 
-struct AOEFFRelTab {
+pub struct AOEFFRelTab {
+pub:
 	relSect u8 // which section this relocation table is for
 	relTabName u32 // index of relocation table name
-	relEntries &&AOEFFRelEnt
+	relEntries &&AOEFFRelEntry
 	relCount   u32 // number of relocation entries
 }
 
-struct AOEFFRelTableDir {
+pub struct AOEFFRelTableDir {
+pub:
 	reldTables &AOEFFRelTab
 	reldCount  u8 // number of relocation tables
 }
 
 // Relocation type constants
-const	re_aru32_abs14 = 0
-const	re_aru32_mem9 = 1
-const	re_aru32_ir24 = 2
-const	re_aru32_ir19 = 3
+pub const	re_aru32_abs14 = 0
+pub const	re_aru32_mem9 = 1
+pub const	re_aru32_ir24 = 2
+pub const	re_aru32_ir19 = 3
 
-struct AOEFFDyLibEnt {
+pub struct AOEFFDyLibEntry {
+pub:
 	dlName u32 // index of the dynamic library name in dynamic string table
 	dlVersion u32 // version of the dynamic library
 }
 
-struct AOEFFDyLibTab {
-	dlEntries &AOEFFDyLibEnt
+pub struct AOEFFDyLibTab {
+pub:
+	dlEntries &AOEFFDyLibEntry
 	dlCount   u32 // number of dynamic library entries
 }
 
-struct AOEFFDyStrTab {
+pub struct AOEFFDyStrTab {
+pub:
 	dlstStrs &i8
 }
 
-struct AOEFFImportEnt {
+pub struct AOEFFImportEntry {
+pub:
 	ieName u32 // index of the imported symbol name in the string table
 	ieDyLib u32 // index of the dynamic library this symbol is imported from in the dynamic library table
 }
 
-struct AOEFFImportTab {
-	imEntries &AOEFFImportEnt
+pub struct AOEFFImportTab {
+pub:
+	imEntries &AOEFFImportEntry
 	imCount   u32 // number of import entries
 }
 
-enum AOEFbin_ft {
+pub enum AOEFBinFormatType {
 	aoef_ft_aobj
 	aoef_ft_exec
 	aoef_ft_dlib
@@ -142,8 +155,9 @@ enum AOEFbin_ft {
 	aoef_ft_kern
 }
 
-struct AOEFbin {
-	binarytype       AOEFbin_ft
+pub struct AOEFbin {
+pub:
+	binarytype       AOEFBinFormatType
 	header           AOEFFheader
 	sectHdrTable     &AOEFFSectHeader
 	symbEntTable     &AOEFFSymbEntry
