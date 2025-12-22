@@ -257,6 +257,7 @@ fn main() {
 	mut options := DisassemblerOptions{
 		useColor: useColor
 		showText: disassembleCode || disassembleAll
+		showAll: disassembleAll
 	}
 
 	if viewHeader { showFileHeader(hdr); }
@@ -269,5 +270,5 @@ fn main() {
 		println(term.yellow("Relocation Table viewing not implemented yet"))
 	}
 	if viewStrTable { showStringTable(buff, hdr); }
-	if disassembleCode { disassemble(buff, hdr, &options, binary) }
+	if disassembleCode || disassembleAll { disassemble(buff, hdr, &options, binary) }
 }

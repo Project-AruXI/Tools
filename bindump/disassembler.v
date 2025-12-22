@@ -11,6 +11,7 @@ pub:
 	useColor bool
 pub mut:
 	showText bool
+	showAll  bool
 }
 
 
@@ -128,14 +129,24 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	}
 }
 
+fn dataDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions) {
+	println("\nData Sections Disassembly Not Implemented")
+}
+
+fn constDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions) {
+	println("\nConstant Sections Disassembly Not Implemented")
+}
 
 
 pub fn disassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, filename string) {
-	// println("Disassembler options: useColor=${options.useColor}, showText=${options.showText}")
+	println("Disassembler options: useColor=${options.useColor}, showText=${options.showText}, showAll=${options.showAll}")
 
 	println("${filename}:\n")
 
-
-
 	if options.showText { textDisassemble(buff, hdr, options) }
+
+	if options.showAll {
+		dataDisassemble(buff, hdr, options)
+		constDisassemble(buff, hdr, options)
+	}
 }

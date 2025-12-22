@@ -192,14 +192,6 @@ fn getRTypeOperands(instrbits u32, useColor bool) string {
 }
 
 fn getMTypeOperands(instrbits u32, useColor bool) string {
-	// rd is low 5 bits
-	// rr is next 5 bits
-	// rs is next 5 bits
-	// imm is next 9 bits signed
-	// When imm and rr are zero,30, format is rd,[rs]
-	// When rr is 30, format is rd[rs,imm]
-	// When imm is 0, format is rd,[rs],rr
-
 	rd := u8((instrbits) & 0x1F)
 	rr := u8((instrbits >> 5) & 0x1F)
 	rs := u8((instrbits >> 10) & 0x1F)
@@ -218,19 +210,30 @@ fn getMTypeOperands(instrbits u32, useColor bool) string {
 		imm.str()
 	}
 
+	lbracket := if useColor {
+		applyOtherColor("[")
+	} else {
+		"["
+	}
+	rbracket := if useColor {
+		applyOtherColor("]")
+	} else {
+		"]"
+	}
+
 	if rr == 30 && imm == 0 {
 		// rd,[rs]
-		return " ${rdStr},[${rsStr}]"
+		return " ${rdStr},${lbracket}${rsStr}${rbracket}"
 	} else if rr == 30 {
 		// rd,[rs,imm]
-		return " ${rdStr},[${rsStr},${immStr}]"
+		return " ${rdStr},${lbracket}${rsStr},${immStr}${rbracket}"
 	} else if imm == 0 {
 		// rd,[rs],rr
-		return " ${rdStr},[${rsStr}],${rrStr}"
+		return " ${rdStr},${lbracket}${rsStr}${rbracket},${rrStr}"
 	}
 
 	// rd,[rs,imm],rr
-	return " ${rdStr},[${rsStr},${immStr}],${rrStr}"
+	return " ${rdStr},${lbracket}${rsStr},${immStr}${rbracket},${rrStr}"
 }
 
 fn getBiTypeOperands(instrbits u32, useColor bool) string {
@@ -280,7 +283,7 @@ pub fn decode(instrbits u32, useColor bool) string {
 
 	// Make sure rInstr is not unknown
 	if rInstr == "unknown" {
-		eprintln("Instruction name cannot be unknown.")
+		eprintln("Instruction name cannot be unknown for 0x${instrbits:x}.")
 		exit(1)
 	}
 
