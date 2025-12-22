@@ -195,7 +195,7 @@ fn main() {
 	mut disassembleAll := fp.bool("disassemble-all", `D`, false, "Disassemble all sections")
 	mut viewAll := fp.bool("view-all", `a`, false, "Equivalent to -s -t -h -H")
 
-	mut useColor := fp.bool("color", `c`, true, "Use colored output for disassembly")
+	mut useColor := fp.bool("color", `c`, false, "Use colored output for disassembly")
 	args := fp.finalize() or {
 		eprintln(err)
 		println(fp.usage())
@@ -239,6 +239,12 @@ fn main() {
 	// View the pointer as AOEFFheader
 	hdr := unsafe { &AOEFFheader(buff) }
 
+	// Make sure the file indeed is an AOEFF file
+	if hdr.hID[aoefv.ahid_0] != aoefv.ah_id0 || hdr.hID[aoefv.ahid_1] != aoefv.ah_id1 || hdr.hID[aoefv.ahid_2] != aoefv.ah_id2 || hdr.hID[aoefv.ahid_3] != aoefv.ah_id3 {
+		eprintln(term.red("The file is not a valid AOEFF file (invalid header ID)"))
+		return
+	}
+
 	if viewAll {
 		viewSymbolTable = true
 		viewDynSymbTable = true
@@ -263,5 +269,5 @@ fn main() {
 		println(term.yellow("Relocation Table viewing not implemented yet"))
 	}
 	if viewStrTable { showStringTable(buff, hdr); }
-	if disassembleCode { disassemble(buff, hdr, &options) }
+	if disassembleCode { disassemble(buff, hdr, &options, binary) }
 }
