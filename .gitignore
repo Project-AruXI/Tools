@@ -1,6 +1,9 @@
 out/
 .vscode/
 **/*.ao
+**/*.o
+**/*.od
 **/*.s
+**/*.sh
 readf-zig/
 readf-c3/

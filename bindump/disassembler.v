@@ -15,6 +15,7 @@ pub mut:
 }
 
 
+@[if debug ?]
 @[inline]
 fn debug(msg string) {
 	println(term.yellow("${msg}"))
@@ -42,9 +43,6 @@ fn printInstr(addr u32, instrbits u32, lp u32, useColor bool, symbolTableMap dec
 
 fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
 	println("\nDisassembly of section .text:")
-
-	// From the symbol table, extract all symbols that has its .seSymbSect in the text section
-	// Then, disassemble the code in the .text section, showing the symbols as labels using the string table as well
 
 	// Store all relevant symbols in a map
 	// key: address (seSymbVal)
@@ -118,14 +116,13 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 			println("\n${addr:08x} <${symbName}>:")
 		}
 
-		// instrbits := unsafe { (u32(*(&u8(lp))) << 24) | (u32(*(&u8(lp + 1))) << 16) | (u32(*(&u8(lp + 2))) << 8) | (u32(*(&u8(lp + 3))) << 0) }
 		instrbits := unsafe { (u32(*(&u8(lp + 3))) << 24) | (u32(*(&u8(lp + 2))) << 16) | (u32(*(&u8(lp + 1))) << 8) |  (u32(*(&u8(lp))) << 0) }
 
 		// debug("Disassembling instruction at 0x${addr:08x}, bits=0x${instrbits:08x}")
 
 		printInstr(addr, instrbits, addr, options.useColor, symbolTableMap)
 
-		unsafe { lp += 4 } // Assuming each instruction is 4 bytes
+		unsafe { lp += 4 }
 	}
 }
 
@@ -140,8 +137,6 @@ fn constDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptio
 
 pub fn disassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, filename string) {
 	symbolTableMap := decoder.buildSymbolTableMap(buff, hdr)
-
-	debug("Disassembler options: useColor=${options.useColor}, showText=${options.showText}, showAll=${options.showAll}")
 
 	println("${filename}:\n")
 

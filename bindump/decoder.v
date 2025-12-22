@@ -4,6 +4,7 @@ import aoefv
 import term
 
 
+@[if debug ?]
 @[inline]
 fn debug(msg string) {
 	println(term.yellow("${msg}"))
@@ -47,7 +48,6 @@ pub type SymbTableType = map[u32]map[u32]string
 //				value: symbol name (from string table)
 // An address can have multiple symbols if they are in different sections
 // For example, address 0x0 can have a label for .text and another for .data
-// Use the buffer and header
 pub fn buildSymbolTableMap(buff &u8, hdr &aoefv.AOEFFheader) SymbTableType {
 	mut symbolTableMap := map[u32]map[u32]string{}
 
@@ -68,11 +68,10 @@ pub fn buildSymbolTableMap(buff &u8, hdr &aoefv.AOEFFheader) SymbTableType {
 			symbolTableMap[addr] = map[u32]string{}
 		}
 		symbolTableMap[addr][sectNum] = symbName
-		debug("Added symbol '${symbName}' at address 0x${addr:08x} in section ${sectNum}")
+		// debug("Added symbol '${symbName}' at address 0x${addr:08x} in section ${sectNum}")
 	}
 
-	return symbolTableMap
-	
+	return symbolTableMap	
 }
 
 enum InstrType {
@@ -91,7 +90,6 @@ struct OpcodeType {
 	instrType  InstrType
 }
 
-// Have a map that maps opcodes (one byte) to instruction names
 fn opcodeMap() map[u8]OpcodeType {
 	return {
 		u8(0b10000000): OpcodeType{"add", InstrType.i_type} // add immediate
@@ -302,8 +300,6 @@ fn getMTypeOperands(instrbits u32, useColor bool) string {
 }
 
 fn getBiTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
-	// Get the immediate starting in bit 0 and is 24 bits signed
-
 	mut imm := u32((instrbits) & 0xFFFFFF)
 	// debug("Extracted imm = 0x${imm:x}")
 
@@ -330,9 +326,6 @@ fn getBiTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTa
 	// debug("Final address to lookup = 0x${addr:x}")
 
 	// Get the symbol name at that address in the text section
-	// symbName := symbolTableMap[addr][3] or {
-	// 	"unknown"
-	// }
 	temp := (symbolTableMap[addr] or { map[u32]string{} }).clone()
 	symbName := temp[3] or {
 		"unknown"
@@ -369,10 +362,6 @@ fn getBuTypeOperands(instrbits u32, instr string, useColor bool) string {
 }
 
 fn getBcTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
-	// Same process as Bi but the condition code is in bits 0-3
-	// And the immediate is in bits 5-23 (19 bits signed)
-	// The format is instrCond num <symb>
-
 	condCode := u8((instrbits) & 0x0F)
 	rawCondStr := condCodeMap()[condCode] or {
 		"unknown"
@@ -399,10 +388,6 @@ fn getBcTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTa
 	addr := u32(num0 + i32(lp))
 	// debug("Final address to lookup = 0x${addr:x}")
 
-	// Get the symbol name at that address in the text section
-	// symbName := symbolTableMap[addr][3] or {
-	// 	"unknown"
-	// }
 	temp := (symbolTableMap[addr] or { map[u32]string{} }).clone()
 	symbName := temp[3] or {
 		"unknown"
