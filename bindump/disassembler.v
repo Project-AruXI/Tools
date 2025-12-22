@@ -21,13 +21,13 @@ fn debug(msg string) {
 }
 
 
-fn printInstr(addr u32, instrbits u32, useColor bool) {
+fn printInstr(addr u32, instrbits u32, lp u32, useColor bool, symbolTableMap decoder.SymbTableType) {
 	byte0 := u8((instrbits >> 24) & 0xFF)
 	byte1 := u8((instrbits >> 16) & 0xFF)
 	byte2 := u8((instrbits >> 8) & 0xFF)
 	byte3 := u8((instrbits >> 0) & 0xFF)
 
-	instr := string(decoder.decode(instrbits, useColor))
+	instr := string(decoder.decode(instrbits, useColor, lp, symbolTableMap))
 
 	mut instrStr := ""
 	if useColor {
@@ -40,7 +40,7 @@ fn printInstr(addr u32, instrbits u32, useColor bool) {
 }
 
 
-fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions) {
+fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
 	println("\nDisassembly of section .text:")
 
 	// From the symbol table, extract all symbols that has its .seSymbSect in the text section
@@ -123,7 +123,7 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 
 		// debug("Disassembling instruction at 0x${addr:08x}, bits=0x${instrbits:08x}")
 
-		printInstr(addr, instrbits, options.useColor)
+		printInstr(addr, instrbits, addr, options.useColor, symbolTableMap)
 
 		unsafe { lp += 4 } // Assuming each instruction is 4 bytes
 	}
@@ -139,11 +139,13 @@ fn constDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptio
 
 
 pub fn disassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, filename string) {
-	println("Disassembler options: useColor=${options.useColor}, showText=${options.showText}, showAll=${options.showAll}")
+	symbolTableMap := decoder.buildSymbolTableMap(buff, hdr)
+
+	debug("Disassembler options: useColor=${options.useColor}, showText=${options.showText}, showAll=${options.showAll}")
 
 	println("${filename}:\n")
 
-	if options.showText { textDisassemble(buff, hdr, options) }
+	if options.showText { textDisassemble(buff, hdr, options, symbolTableMap) }
 
 	if options.showAll {
 		dataDisassemble(buff, hdr, options)

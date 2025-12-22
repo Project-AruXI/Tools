@@ -1,18 +1,29 @@
 module decoder
 
+import aoefv
 import term
 
+
+@[inline]
+fn debug(msg string) {
+	println(term.yellow("${msg}"))
+}
 
 /*
 	Color mappings
 	instruction => underline green
 	register => blue
 	immediate => bold red
+	cond => underline magenta
 	other => mix
 */
 @[inline]
 fn applyInstrColor(instr string) string {
 	return term.underline(term.green(instr))
+}
+@[inline]
+fn applyCondColor(cond string) string {
+	return term.underline(term.magenta(cond))
 }
 @[inline]
 fn applyRegisterColor(reg string) string {
@@ -25,6 +36,43 @@ fn applyImmColor(imm string) string {
 @[inline]
 fn applyOtherColor(other string) string {
 	return term.rgb(100, 100, 150, other)
+}
+
+pub type SymbTableType = map[u32]map[u32]string
+
+// To make things easier, convert the symbol table into a map
+// key: address (seSymbVal)
+// value: map:
+// 				key: section number (seSymbSect)
+//				value: symbol name (from string table)
+// An address can have multiple symbols if they are in different sections
+// For example, address 0x0 can have a label for .text and another for .data
+// Use the buffer and header
+pub fn buildSymbolTableMap(buff &u8, hdr &aoefv.AOEFFheader) SymbTableType {
+	mut symbolTableMap := map[u32]map[u32]string{}
+
+	symbTableStart := u32(hdr.hSymbOff)
+	symbTableSize := u32(hdr.hSymbSize)
+
+	for i in 0 .. symbTableSize-1 {
+		symbEntryOffset := symbTableStart + u32(i * sizeof(aoefv.AOEFFSymbEntry))
+		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(buff + int(symbEntryOffset)) }
+
+		symbNameOffset := u32(hdr.hStrTabOff) + u32(symbEntry.seSymbName)
+		symbName := unsafe { tos2(&u8(buff + int(symbNameOffset))) }
+
+		sectNum := u32(symbEntry.seSymbSect)
+		addr := u32(symbEntry.seSymbVal)
+
+		if addr !in symbolTableMap {
+			symbolTableMap[addr] = map[u32]string{}
+		}
+		symbolTableMap[addr][sectNum] = symbName
+		debug("Added symbol '${symbName}' at address 0x${addr:08x} in section ${sectNum}")
+	}
+
+	return symbolTableMap
+	
 }
 
 enum InstrType {
@@ -109,6 +157,23 @@ fn subOpcodeMap() map[u8]string {
 		u8(0b11010): "mvcstr"
 		u8(0b11110): "ldcstr"
 		u8(0b11111): "resr"
+	}
+}
+
+fn condCodeMap() map[u8]string {
+	return {
+		u8(0b0000): "eq"
+		u8(0b0001): "ne"
+		u8(0b0010): "ov"
+		u8(0b0011): "nv"
+		u8(0b0100): "mi"
+		u8(0b0101): "pz"
+		u8(0b0110): "cc"
+		u8(0b0111): "cs"
+		u8(0b1000): "gt"
+		u8(0b1001): "ge"
+		u8(0b1010): "lt"
+		u8(0b1011): "le"
 	}
 }
 
@@ -236,8 +301,58 @@ fn getMTypeOperands(instrbits u32, useColor bool) string {
 	return " ${rdStr},${lbracket}${rsStr},${immStr}${rbracket},${rrStr}"
 }
 
-fn getBiTypeOperands(instrbits u32, useColor bool) string {
-	return ""
+fn getBiTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
+	// Get the immediate starting in bit 0 and is 24 bits signed
+
+	mut imm := u32((instrbits) & 0xFFFFFF)
+	// debug("Extracted imm = 0x${imm:x}")
+
+	// Sign extend if needed
+	if imm & 0x80000 != 0 {
+		imm = imm | 0xFFF80000
+		// debug("Sign extended imm = 0x${imm:x}")
+	}
+
+
+	// Format is `instr num <symb>`
+	// Where num is the immediate value shifted right by 2, added by lp
+	// And symb is the symbol at that address
+	// For example, if imm is 0x10, then 0x10 > 2 = 0x4
+	// If lp is 0x4, then the final address is 0x8
+	// Search through the symbol table to find the symbol at that address
+	// For example, the symbol at 0x8 is `_fn`
+	// So it would be `instr 0x8 <_fn>`
+
+	num0 := i32(imm) >> 2
+	// debug("Imm shifted right by 2 = 0x${num0:x}")
+
+	addr := u32(num0 + i32(lp))
+	// debug("Final address to lookup = 0x${addr:x}")
+
+	// Get the symbol name at that address in the text section
+	// symbName := symbolTableMap[addr][3] or {
+	// 	"unknown"
+	// }
+	temp := (symbolTableMap[addr] or { map[u32]string{} }).clone()
+	symbName := temp[3] or {
+		"unknown"
+	}
+
+	// debug("Symbol ${symbName} found at address 0x${addr:x}")
+
+	addrStr := if useColor {
+		applyImmColor("0x${addr:x}")
+	} else {
+		"0x${addr:x}"
+	}
+
+	symbNameStr := if useColor {
+		applyOtherColor("<") + applyOtherColor(symbName) + applyOtherColor(">")
+	} else {
+		"<${symbName}>"
+	}
+
+	return " ${addrStr} ${symbNameStr}"
 }
 
 fn getBuTypeOperands(instrbits u32, instr string, useColor bool) string {
@@ -253,8 +368,61 @@ fn getBuTypeOperands(instrbits u32, instr string, useColor bool) string {
 	return " ${rdStr}"
 }
 
-fn getBcTypeOperands(instrbits u32, useColor bool) string {
-	return ""
+fn getBcTypeOperands(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
+	// Same process as Bi but the condition code is in bits 0-3
+	// And the immediate is in bits 5-23 (19 bits signed)
+	// The format is instrCond num <symb>
+
+	condCode := u8((instrbits) & 0x0F)
+	rawCondStr := condCodeMap()[condCode] or {
+		"unknown"
+	}
+	condStr := if useColor {
+		applyCondColor(rawCondStr)
+	} else {
+		rawCondStr
+	}
+
+	mut imm := u32((instrbits >> 5) & 0x7FFFF)
+	// debug("Extracted imm = 0x${imm:x}")
+
+	// Sign extend if needed
+	if imm & 0x40000 != 0 {
+		imm = imm | 0xFFF80000
+		// debug("Sign extended imm = 0x${imm:x}")
+	}
+
+	// Same process as Bi
+	num0 := i32(imm) >> 2
+	// debug("Imm shifted right by 2 = 0x${num0:x}")
+
+	addr := u32(num0 + i32(lp))
+	// debug("Final address to lookup = 0x${addr:x}")
+
+	// Get the symbol name at that address in the text section
+	// symbName := symbolTableMap[addr][3] or {
+	// 	"unknown"
+	// }
+	temp := (symbolTableMap[addr] or { map[u32]string{} }).clone()
+	symbName := temp[3] or {
+		"unknown"
+	}
+
+	// debug("Symbol ${symbName} found at address 0x${addr:x}")
+
+	addrStr := if useColor {
+		applyImmColor("0x${addr:x}")
+	} else {
+		"0x${addr:x}"
+	}
+
+	symbNameStr := if useColor {
+		applyOtherColor("<") + applyOtherColor(symbName) + applyOtherColor(">")
+	} else {
+		"<${symbName}>"
+	}
+
+	return "${condStr} ${addrStr} ${symbNameStr}"
 }
 
 fn getSTypeOperands(instrbits u32, subinstr string, useColor bool) string {
@@ -276,7 +444,7 @@ fn getSTypeOperands(instrbits u32, subinstr string, useColor bool) string {
 	return ""
 }
 
-pub fn decode(instrbits u32, useColor bool) string {
+pub fn decode(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
 	rawInstr, instrType := getInstrOp(instrbits)
 
 	rInstr := fixSysInstr(rawInstr, instrbits)
@@ -312,7 +480,7 @@ pub fn decode(instrbits u32, useColor bool) string {
 			decodedInstr += operands
 		}
 		.bi_type {
-			operands := getBiTypeOperands(instrbits, useColor)
+			operands := getBiTypeOperands(instrbits, useColor, lp, symbolTableMap)
 			decodedInstr += operands
 		}
 		.bu_type {
@@ -320,7 +488,7 @@ pub fn decode(instrbits u32, useColor bool) string {
 			decodedInstr += operands
 		}
 		.bc_type {
-			operands := getBcTypeOperands(instrbits, useColor)
+			operands := getBcTypeOperands(instrbits, useColor, lp, symbolTableMap)
 			decodedInstr += operands
 		}
 		.s_type {
