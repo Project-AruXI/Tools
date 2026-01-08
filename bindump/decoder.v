@@ -180,7 +180,7 @@ fn getInstrOp (instrbits u32) (string, InstrType) {
 	opcode := u8((instrbits >> 24) & 0xFF)
 
 	opcodeType := opcodeMap()[opcode] or {
-		return "unknown", InstrType.unknown
+		return "bad", InstrType.unknown
 	}
 
 	return opcodeType.opcodeName, opcodeType.instrType
@@ -191,7 +191,7 @@ fn fixSysInstr(instr string, instrbits u32) string {
 		subopcode := u8((instrbits >> 19) & 0x1f)
 
 		subopcodeName := subOpcodeMap()[subopcode] or {
-			return "unknown"
+			return "bad"
 		}
 
 		return subopcodeName
@@ -432,12 +432,14 @@ fn getSTypeOperands(instrbits u32, subinstr string, useColor bool) string {
 pub fn decode(instrbits u32, useColor bool, lp u32, symbolTableMap SymbTableType) string {
 	rawInstr, instrType := getInstrOp(instrbits)
 
+	if instrType == .unknown {
+		return if useColor { applyInstrColor(rawInstr) } else { rawInstr }
+	}
+
 	rInstr := fixSysInstr(rawInstr, instrbits)
 
-	// Make sure rInstr is not unknown
-	if rInstr == "unknown" {
-		eprintln("Instruction name cannot be unknown for 0x${instrbits:x}.")
-		exit(1)
+	if rInstr == "bad" {
+		return if useColor { applyInstrColor(rInstr) } else { rInstr }
 	}
 
 	instr := if useColor { applyInstrColor(rInstr) } else { rInstr }
