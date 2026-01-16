@@ -6,11 +6,10 @@ import term
 
 import aoefv { 
 	AOEFFheader, AOEFFSectHeader, AOEFFSymbEntry, AOEFFTRelTable, AOEFFDRelTable,
-	AOEFFStrTab, AOEFFRelStrTab, AOEFFTRelEntry,
+	AOEFFStrTab, AOEFFRelStrTab, AOEFFTRelEntry, AOEFFDRelEntry,
+	AOEFFDyLibEntry, AOEFFDyStrTable, AOEFFImportEntry, AOEFFExportEntry,
 	se_get_type, se_get_loc 
 }
-
-
 
 
 fn getString(buff &u8, nameOffset u32) string {
@@ -28,7 +27,6 @@ fn getString(buff &u8, nameOffset u32) string {
 
 	return name
 }
-
 
 
 fn showFileHeader(hdr &AOEFFheader) {
@@ -64,15 +62,17 @@ fn showFileHeader(hdr &AOEFFheader) {
 	println("    Dynamic Library String Table Size: ${hdr.hDyLibStrTabSize} bytes")
 	println("    Import Table Offset: 0x${hdr.hImportTabOff:x}")
 	println("    Import Table Size: ${hdr.hImportTabSize} entries")
+	println("    Export Table Offset: 0x${hdr.hExportTabOff:x}")
+	println("    Export Table Size: ${hdr.hExportTabSize} entries\n")
 }
 fn showSectionHeaders(buff &u8, hdr &AOEFFheader) {
 	println("Section Headers:")
 
 	sectHeaderStart := hdr.hSectOff
 	sectHeaderSize := hdr.hSectSize // The size is the number of entries
-	
+
 	println("    Num   Name     Size     Offset")
-	for i in 0 .. sectHeaderSize-1 {
+	for i in 0 .. sectHeaderSize {
 		sectEntryOffset := sectHeaderStart + u32(i * sizeof(AOEFFSectHeader))
 		sectEntry := unsafe { &AOEFFSectHeader(&u8(buff) + int(sectEntryOffset)) }
 		// Convert name to string
@@ -87,7 +87,7 @@ fn showSectionHeaders(buff &u8, hdr &AOEFFheader) {
 
 		println("    [${i}] ${name:-8} ${sectEntry.shSectSize:08} 0x${sectEntry.shSectOff:08x}")
 	}
-
+	println("")
 }
 fn showSymbolTable(buff &u8, hdr &AOEFFheader) {
 	println("Symbol Table:")
@@ -96,7 +96,7 @@ fn showSymbolTable(buff &u8, hdr &AOEFFheader) {
 	symbTableSize := hdr.hSymbSize // The size is the number of entries
 
 	println("    Num    Value      Size Type  Loc   Section   Name")
-	for i in 0 .. symbTableSize-1 {
+	for i in 0 .. symbTableSize {
 		symbEntryOffset := symbTableStart + u32(i * sizeof(AOEFFSymbEntry))
 		symbEntry := unsafe { &AOEFFSymbEntry(&u8(buff) + int(symbEntryOffset)) }
 
@@ -135,6 +135,7 @@ fn showSymbolTable(buff &u8, hdr &AOEFFheader) {
 
 		println("    [${i}] 0x${symbEntry.seSymbVal:08x} ${symbEntry.seSymbSize:6} ${symbTypeStr:-6} ${symbLocStr:-6} ${sectStr:6}   ${name:-12}")
 	}
+	println("")
 }
 fn showStringTable(buff &u8, hdr &AOEFFheader) {
 	println("String Table:")
@@ -176,10 +177,6 @@ fn showStringTable(buff &u8, hdr &AOEFFheader) {
 		index += strLen + 1
 	}
 	println("")
-	
-}
-fn showDynSymbolTable(buff &u8, hdr &AOEFFheader) {
-	// Not implemented yet
 }
 fn showTRelocationTable(buff &u8, hdr &AOEFFheader) {
 	trelTabStart := hdr.hTRelTabOff
@@ -198,9 +195,9 @@ fn showTRelocationTable(buff &u8, hdr &AOEFFheader) {
 	// 	uint8_t* temp = (uint8_t*) tRelTables;
 	// 	AOEFFTRelTab* trelTab = (AOEFFTRelTab*)(temp + currTRelTabOffset);
 	// 	currTRelTabOffset += (sizeof(AOEFFTRelTab) - 8) + (sizeof(AOEFFTRelEnt) * (trelTab->relCount));
-	// 	// The above is needed because the relocation entries are variable-length arrays at the end of the relocation table struct
-	// 	// Also, the entries start where, per the struct definition, relEntries is located at
-	// 	// Since `sizeof(AOEFFTRelTab)` includes the 8 bytes for the pointer to relEntries, we need to subtract that out and add the actual size of the entries
+	// The above is needed because the relocation entries are variable-length arrays at the end of the relocation table struct
+	// Also, the entries start where, per the struct definition, relEntries is located at
+	// Since `sizeof(AOEFFTRelTab)` includes the 8 bytes for the pointer to relEntries, we need to subtract that out and add the actual size of the entries
 
 	mut currTRelTabOffset := u32(0)
 	tRelTables := unsafe { &AOEFFTRelTable(&u8(buff) + int(trelTabStart)) }
@@ -249,9 +246,154 @@ fn showTRelocationTable(buff &u8, hdr &AOEFFheader) {
 			println("    0x${relEntry.reOff:08x} ${relTypeStr:-10} 0x${symbEntry.seSymbVal:08x} + 0x${relEntry.reAddend:04x}   ${symbName:-12}")
 		}
 	}
+	println("")
 }
 fn showDRelocationTable(buff &u8, hdr &AOEFFheader) {
-	// Not implemented yet
+	// Same as static relocation table but for dynamic
+	drelTabStart := hdr.hDRelTabOff
+	drelTabSize := hdr.hDRelTabSize // The size is the number of entries
+
+	if drelTabSize == 0 {
+		return
+	}
+
+	println("Dynamic Relocation Table:")
+	mut currDRelTabOffset := u32(0)
+	// println("0x${(&u8(buff) + int(drelTabStart)):x}");
+	dRelTables := unsafe { &AOEFFDRelTable(&u8(buff) + int(drelTabStart)) }
+	for _ in 0 .. drelTabSize {
+		temp := unsafe { &u8(dRelTables) }
+		drelTab := unsafe { &AOEFFDRelTable(&u8(temp) + currDRelTabOffset) }
+		// println("drelTab: ${drelTab}")
+		currDRelTabOffset += (sizeof(AOEFFDRelTable) - 8) + (sizeof(AOEFFDRelEntry) * drelTab.relCount)
+		// Get name from relocation string table
+		relStrTabStart := hdr.hRelStrTabOff
+		relStrOffset := relStrTabStart + drelTab.relTabName
+		relStr := getString(buff, relStrOffset)
+
+		relTableEntryCount := drelTab.relCount
+		suffix := if relTableEntryCount > 1 { "ies" } else { "y" }
+
+		println("  Relocation of '${relStr}' containing ${relTableEntryCount} entr${suffix}:")
+		println("    Offset     Type            Symbol Value + Addend   Symbol Name")
+		// The entries start where AOEFFTRelTable.relEntries is at
+		// As in it is not the value at that location but rather that location (the address of .relEntries)
+		relEntries := &drelTab.relEntries
+		for j in 0 .. relTableEntryCount {
+			relEntry := unsafe { &AOEFFDRelEntry(&u8(relEntries) + int(j * sizeof(AOEFFDRelEntry))) }
+
+			// Get symbol name from symbol table
+			symbEntryOffset := hdr.hSymbOff + u32(relEntry.reSymb * sizeof(AOEFFSymbEntry))
+			symbEntry := unsafe { &AOEFFSymbEntry(&u8(buff) + int(symbEntryOffset)) }
+			strTabStart := hdr.hStrTabOff
+			nameOffset := strTabStart + symbEntry.seSymbName
+			symbName := getString(buff, nameOffset)
+
+			// println("symbEntryOffset: 0x${symbEntryOffset-hdr.hSymbOff:x}\n symbEntry: ${symbEntry}\n strTabStart: 0x${strTabStart:x}\n nameOffset: 0x${nameOffset:x}\n symbName: ${symbName}")
+
+			relTypeStr := match relEntry.reType {
+				aoefv.re_aru32_abs14 { "RE_ARU32_ABS14" }
+				aoefv.re_aru32_mem9 { "RE_ARU32_MEM9" }
+				aoefv.re_aru32_ir24 { "RE_ARU32_IR24" }
+				aoefv.re_aru32_ir19 { "RE_ARU32_IR19" }
+				aoefv.re_aru32_decomp { "RE_ARU32_DECOMP" }
+				aoefv.re_aru32_abs8 { "RE_ARU32_ABS8" }
+				aoefv.re_aru32_abs16 { "RE_ARU32_ABS16" }
+				aoefv.re_aru32_abs32 { "RE_ARU32_ABS32" }
+				else { "${relEntry.reType}" }
+			}
+
+			println("    0x${relEntry.reOff:08x} ${relTypeStr:-10} 0x${symbEntry.seSymbVal:08x} + 0x${relEntry.reAddend:04x}   ${symbName:-12}")
+		}
+	}
+	println("")
+}
+fn showDyLibTable(buff &u8, hdr &AOEFFheader) {
+	dyLibTabStart := hdr.hDyLibTabOff
+	dyLibTabSize := hdr.hDyLibTabSize // The size is the number of entries
+
+	if dyLibTabSize == 0 {
+		return
+	}
+
+	println("Dynamic Library Table:")
+
+	dyLibStrTabStart := hdr.hDyLibStrTabOff
+
+	println("    Num   Dynamic Library   Version")
+	for i in 0 .. dyLibTabSize {
+		dyLibEntryOffset := dyLibTabStart + u32(i * sizeof(AOEFFDyLibEntry))
+		dyLibEntry := unsafe { &AOEFFDyLibEntry(&u8(buff) + int(dyLibEntryOffset)) }
+		// Get the dynamic library name from the dynamic library string table
+		dyLibNameOffset := dyLibStrTabStart + dyLibEntry.dlName
+		dyLibName := getString(buff, dyLibNameOffset)
+
+		// Version is stored as major.minor.patch with upper 4 as major, middle 4 as minor, lower 4 as patch
+		majorVersion := dyLibEntry.dlVersion >> 8
+		minorVersion := (dyLibEntry.dlVersion >> 4) & 0xF
+		patchVersion := dyLibEntry.dlVersion & 0xF
+
+		println("    [${i}] ${dyLibName:-20} ${majorVersion}.${minorVersion}.${patchVersion}")
+	}
+	println("")
+}
+fn showImportTable(buff &u8, hdr &AOEFFheader) {
+	importTableSize := hdr.hImportTabSize // The size is the number of entries
+
+	if importTableSize == 0 {
+		return
+	}
+
+	println("Import Table:")
+
+	importTabStart := hdr.hImportTabOff
+
+	println("    Num Symbol Name   Dynamic Library")
+	for i in 0 .. importTableSize {
+		importEntryOffset := importTabStart + u32(i * sizeof(aoefv.AOEFFImportEntry))
+		importEntry := unsafe { &aoefv.AOEFFImportEntry(&u8(buff) + int(importEntryOffset)) }
+		// println("importEntry.ieSymb: 0x${importEntry.ieSymb:x}")
+		// Get the symbol from the symbol table
+		symbEntryOffset := hdr.hSymbOff + u32(importEntry.ieSymb * sizeof(aoefv.AOEFFSymbEntry))
+		// println("symbEntryOffset: 0x${symbEntryOffset}")
+		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(&u8(buff) + int(symbEntryOffset)) }
+		// Get the name from the string table
+		strTabStart := hdr.hStrTabOff
+		nameOffset := strTabStart + symbEntry.seSymbName
+		symbName := getString(buff, nameOffset)
+		// Get the dynamic library name from the dynamic library string table
+		dyLibStrTabStart := hdr.hDyLibStrTabOff
+		dyLibNameOffset := dyLibStrTabStart + importEntry.ieDyLib
+		dyLibName := getString(buff, dyLibNameOffset)
+		println("    [${i}] ${symbName:-12} ${dyLibName:20}")
+	}
+	println("")
+}
+fn showExportTable(buff &u8, hdr &AOEFFheader) {
+	if hdr.hType != aoefv.aht_dlib {
+		println("File is not a dynamic library\n")
+		return
+	}
+
+	println("Export Table:")
+
+	exportTabStart := hdr.hExportTabOff
+	exportTabSize := hdr.hExportTabSize // The size is the number of entries
+
+	println("    Num Symbol Value   Address   Name")
+	for i in 0 .. exportTabSize {
+		exportEntryOffset := exportTabStart + u32(i * sizeof(aoefv.AOEFFExportEntry))
+		exportEntry := unsafe { &aoefv.AOEFFExportEntry(&u8(buff) + int(exportEntryOffset)) }
+		// Get the symbol from the symbol table
+		symbEntryOffset := hdr.hSymbOff + u32(exportEntry.eeSymb * sizeof(aoefv.AOEFFSymbEntry))
+		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(&u8(buff) + int(symbEntryOffset)) }
+		// Get the name from the string table
+		strTabStart := hdr.hStrTabOff
+		nameOffset := strTabStart + symbEntry.seSymbName
+		name := getString(buff, nameOffset)
+		println("    [${i}] 0x${symbEntry.seSymbVal:08x}    0x${exportEntry.eeAddress:08x} ${name:-12}")
+	}
+	println("")
 }
 
 
@@ -264,13 +406,15 @@ fn main() {
 	fp.skip_executable()
 
 	mut viewSymbolTable := fp.bool("symbol-table", `y`, false, "Display the symbol table")
-	mut viewDynSymbTable := fp.bool("dyn-symbol-table", `d`, false, "Display the dynamic symbol table (Not implemented)")
 	mut viewStrTable := fp.bool("string-table", `t`, false, "Display the string table")
 	mut viewSectHeader := fp.bool("section-header", `s`, false, "Display the section header table")
 	mut viewTRelocTable := fp.bool("relocation-table", `r`, false, "Display the static relocation table")
 	mut viewDRelocTable := fp.bool("dyn-relocation-table", `R`, false, "Display the dynamic relocation table")
+	mut viewDyLibTable := fp.bool("dyn-lib-table", `d`, false, "Display the dynamic library table and its strings")
+	mut viewImportTable := fp.bool("import-table", `i`, false, "Display the import table")
+	mut viewExportTable := fp.bool("export-table", `e`, false, "Display the export table")
 	mut viewHeader := fp.bool("header", `H`, false, "Display the file header")
-	viewAll := fp.bool("all", `a`, false, "Equivalent to -y -d -t -s -r -R -H")
+	viewAll := fp.bool("all", `a`, false, "Equivalent to -y -d -t -s -r -R -i -e -H")
 
 	args := fp.finalize() or {
 		eprintln(err)
@@ -284,7 +428,7 @@ fn main() {
 	}
 
 	// Make sure a flag is present before checking file prescence
-	if !viewSymbolTable && !viewDynSymbTable && !viewStrTable && !viewSectHeader && !viewTRelocTable && !viewDRelocTable && !viewHeader && !viewAll {
+	if !viewSymbolTable && !viewStrTable && !viewSectHeader && !viewTRelocTable && !viewDRelocTable &&  !viewDyLibTable && !viewImportTable && !viewExportTable && !viewHeader && !viewAll {
 		println(term.red("No flag is present"))
 		println(fp.usage())
 		return
@@ -317,23 +461,23 @@ fn main() {
 
 	if viewAll {
 		viewSymbolTable = true
-		viewDynSymbTable = true
 		viewStrTable = true
 		viewSectHeader = true
 		viewTRelocTable = true
 		viewDRelocTable = true
+		viewDyLibTable = true
+		viewImportTable = true
+		viewExportTable = true
 		viewHeader = true
 	}
 
 	if viewHeader { showFileHeader(hdr); }
 	if viewSectHeader { showSectionHeaders(buff, hdr); }
 	if viewSymbolTable { showSymbolTable(buff, hdr); }
-	if viewDynSymbTable {
-		println(term.yellow("Dynamic Symbol Table viewing not implemented yet"))
-	}
 	if viewTRelocTable { showTRelocationTable(buff, hdr) }
-	if viewDRelocTable {
-		println(term.yellow("Dynamic Relocation Table viewing not implemented yet"))
-	}
+	if viewDRelocTable { showDRelocationTable(buff, hdr); }
+	if viewDyLibTable { showDyLibTable(buff, hdr); }
+	if viewImportTable { showImportTable(buff, hdr); }
+	if viewExportTable { showExportTable(buff, hdr); }
 	if viewStrTable { showStringTable(buff, hdr); }
 }
