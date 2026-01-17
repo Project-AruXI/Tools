@@ -53,7 +53,7 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	symbTableStart := u32(hdr.hSymbOff)
 	symbTableSize := u32(hdr.hSymbSize)
 
-	for i in 0 .. symbTableSize-1 {
+	for i in 0 .. symbTableSize {
 		symbEntryOffset := symbTableStart + u32(i * sizeof(aoefv.AOEFFSymbEntry))
 		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(buff + int(symbEntryOffset)) }
 
@@ -87,7 +87,7 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	mut textSectOff := u32(0)
 	mut textSectSize := u32(0)
 
-	for i in 0 .. sectHeaderSize-1 {
+	for i in 0 .. sectHeaderSize {
 		sectEntryOffset := sectHeaderStart + u32(i * sizeof(aoefv.AOEFFSectHeader))
 		sectEntry := unsafe { &aoefv.AOEFFSectHeader(buff + int(sectEntryOffset)) }
 
@@ -106,10 +106,15 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	mut textSectStartPtr := unsafe { &u8(buff) + int(textSectOff) }
 	textSectEndPtr := unsafe { &u8(textSectStartPtr) + int(textSectSize) }
 
+	mut startingPoint := u32(0)
+	if hdr.hType == aoefv.aht_exec { startingPoint = 0x20190000 }
+	else if hdr.hType == aoefv.aht_kern { startingPoint = 0xB8080000 }
+	else { startingPoint = 0x00000000 }
+
 	mut lp := textSectStartPtr
 	for lp < textSectEndPtr {
 		// Check if there is a symbol at this address
-		addr := u32(unsafe { lp  - textSectStartPtr })
+		addr := u32(unsafe { startingPoint + u32(lp  - textSectStartPtr) })
 		// debug("Checking symbol at address 0x${addr:08x}")
 		if addr in textSymbMap {
 			symbName := textSymbMap[addr]
@@ -126,14 +131,114 @@ fn textDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	}
 }
 
-fn dataDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions) {
+fn dataDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
 	println("\nData Sections Disassembly Not Implemented")
 }
 
-fn constDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions) {
+fn constDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
 	println("\nConstant Sections Disassembly Not Implemented")
 }
 
+fn evtDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
+	println("\nEvt Sections Disassembly Not Implemented")
+}
+
+fn fjtDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
+	println("\nDisassembly of section .fjt:")
+
+	// Store all relevant symbols in a map
+	// key: address (seSymbVal)
+	// value: symbol name (from string table)
+	mut textSymbMap := map[u32]string{}
+	
+	// Go through the symbol table
+	symbTableStart := u32(hdr.hSymbOff)
+	symbTableSize := u32(hdr.hSymbSize)
+
+	for i in 0 .. symbTableSize {
+		symbEntryOffset := symbTableStart + u32(i * sizeof(aoefv.AOEFFSymbEntry))
+		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(buff + int(symbEntryOffset)) }
+
+		// Check if the symbol is in the .text section (usually index 3)
+		if symbEntry.seSymbSect == 3 {
+			// Get the name from the string table
+			strTabStart := u32(hdr.hStrTabOff)
+			nameOffset := strTabStart + symbEntry.seSymbName
+			mut nameBytes := []u8{}
+			mut idx := u32(0)
+			for {
+				b := unsafe { *(&u8(buff) + int(nameOffset + idx)) }
+				if b == 0 {
+					break
+				}
+				nameBytes << b
+				idx++
+			}
+			name := nameBytes.bytestr()
+
+			textSymbMap[symbEntry.seSymbVal] = name
+
+			// debug("Found symbol in .text: ${name} at address 0x${symbEntry.seSymbVal:08x}")
+		}
+	}
+
+	// Get the size of the text section
+	sectHeaderStart := u32(hdr.hSectOff)
+	sectHeaderSize := u32(hdr.hSectSize)
+
+	mut textSectSize := u32(0)
+	mut fjtSectOff := u32(0)
+	mut fjtSectSize := u32(0)
+
+	for i in 0 .. sectHeaderSize {
+		sectEntryOffset := sectHeaderStart + u32(i * sizeof(aoefv.AOEFFSectHeader))
+		sectEntry := unsafe { &aoefv.AOEFFSectHeader(buff + int(sectEntryOffset)) }
+
+		sectName := unsafe { tos(&u8(&sectEntry.shSectName[0]), 8) }.trim_right('\0')
+
+		if sectName == ".text" {
+			textSectSize = sectEntry.shSectSize
+		} else if sectName == ".fjt" {
+			fjtSectOff = sectEntry.shSectOff
+			fjtSectSize = sectEntry.shSectSize
+			break
+		}
+	}
+
+	debug("FJT section offset: 0x${fjtSectOff:08x}, size: ${fjtSectSize} bytes")
+
+	// Disassemble the code in .fjt
+	mut fjtSectStartPtr := unsafe { &u8(buff) + int(fjtSectOff) }
+	fjtSectEndPtr := unsafe { &u8(fjtSectStartPtr) + int(fjtSectSize) }
+
+	mut startingPoint := u32(0)
+	if hdr.hType == aoefv.aht_exec { startingPoint = 0x20190000 + textSectSize }
+	else if hdr.hType == aoefv.aht_kern { startingPoint = 0xB8080000 + textSectSize }
+	else { startingPoint = 0x00000000 + textSectSize }
+
+	mut lp := fjtSectStartPtr
+	for lp < fjtSectEndPtr {
+		// Check if there is a symbol at this address
+		addr := u32(unsafe { startingPoint + u32(lp  - fjtSectStartPtr) })
+		// debug("Checking symbol at address 0x${addr:08x}")
+		if addr in textSymbMap {
+			symbName := textSymbMap[addr]
+			println("\n${addr:08x} <${symbName}>:")
+		}
+
+		instrbits := unsafe { (u32(*(&u8(lp + 3))) << 24) | (u32(*(&u8(lp + 2))) << 16) | (u32(*(&u8(lp + 1))) << 8) |  (u32(*(&u8(lp))) << 0) }
+
+		// debug("Disassembling instruction at 0x${addr:08x}, bits=0x${instrbits:08x}")
+
+		printInstr(addr, instrbits, addr, options.useColor, symbolTableMap)
+
+		unsafe { lp += 4 }
+	}
+}
+
+fn djtDisassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, symbolTableMap decoder.SymbTableType) {
+	println("\nDJT Sections Disassembly Not Implemented")
+}
 
 pub fn disassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOptions, filename string) {
 	symbolTableMap := decoder.buildSymbolTableMap(buff, hdr)
@@ -143,7 +248,12 @@ pub fn disassemble(buff &u8, hdr &aoefv.AOEFFheader, options &DisassemblerOption
 	if options.showText { textDisassemble(buff, hdr, options, symbolTableMap) }
 
 	if options.showAll {
-		dataDisassemble(buff, hdr, options)
-		constDisassemble(buff, hdr, options)
+		fjtDisassemble(buff, hdr, options, symbolTableMap)
+		dataDisassemble(buff, hdr, options, symbolTableMap)
+		constDisassemble(buff, hdr, options, symbolTableMap)
+		djtDisassemble(buff, hdr, options, symbolTableMap)
+		if hdr.hType == aoefv.aht_kern {
+			evtDisassemble(buff, hdr, options, symbolTableMap)
+		}
 	}
 }

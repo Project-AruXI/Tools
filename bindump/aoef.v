@@ -23,6 +23,8 @@ pub:
 	hDyLibStrTabSize u32 // size (in bytes) of the dynamic library string table
 	hImportTabOff u32 // offset of the import table
 	hImportTabSize u32 // number of import entries
+	hExportTabOff u32 // offset of the export table
+	hExportTabSize u32 // number of export entries
 }
 
 // Header ID and file type constants (converted from C macros)
@@ -79,11 +81,6 @@ pub const	se_none_t = 0
 pub const	se_absv_t = 1
 pub const	se_func_t = 2
 pub const	se_obj_t = 3
-// Extra object types, not necessary
-pub const	se_obj_arr_t = 4
-pub const	se_obj_struct_t = 5
-pub const	se_obj_union_t = 6
-pub const	se_obj_ptr_t = 7
 
 pub const	se_local = 0
 pub const	se_globl = 1
@@ -118,7 +115,7 @@ pub:
 pub struct AOEFFDRelEntry {
 pub:
 	reOff u32 // offset from the start of the section
-	reSymb u32 // index of the symbol in symbol table
+	reSymb u8 // index of the symbol in symbol table
 	reType u8 // type of relocation (RE_ARU32_*)
 	reAddend i32 // addend to be added to the symbol value
 }
@@ -127,8 +124,8 @@ pub struct AOEFFDRelTable {
 pub:
 	relSect u8 // which section this relocation table is for
 	relTabName u32 // index of relocation table name in relocation string table
-	relEntries &AOEFFDRelEntry
 	relCount u32 // number of relocation entries
+	relEntries &AOEFFDRelEntry
 }
 
 // Relocation type constants
@@ -144,7 +141,7 @@ pub const re_aru32_abs32 = 7
 pub struct AOEFFDyLibEntry {
 pub:
 	dlName u32 // index of the dynamic library name in dynamic string table
-	dlVersion u32 // version of the dynamic library
+	dlVersion u16 // version of the dynamic library
 }
 
 pub struct AOEFFDyStrTable {
@@ -154,8 +151,14 @@ pub:
 
 pub struct AOEFFImportEntry {
 pub:
-	ieName u32 // index of the imported symbol name in the string table
+	ieSymb u32 // index of the imported symbol name in the string table
 	ieDyLib u32 // index of the dynamic library this symbol is imported from in the dynamic library table
+}
+
+pub struct AOEFFExportEntry {
+pub:
+	eeSymb u32 // index of the exported symbol in the symbol table
+	eeAddress u32 // address of the exported symbol
 }
 
 
@@ -186,6 +189,7 @@ pub:
 	dyLibStringTable AOEFFDyStrTable
 
 	importTable      &AOEFFImportEntry
+	exportTable      &AOEFFExportEntry
 
 	data_            &u8
 	const_           &u8
@@ -193,6 +197,7 @@ pub:
 	text_init_       &u32
 	text_deinit_     &u32
 	text_fjt_        &u32
+	text_djt_        &u32
 
 	evt_             &u8
 	ivt_             &u8

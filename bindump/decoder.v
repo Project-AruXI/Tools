@@ -54,7 +54,7 @@ pub fn buildSymbolTableMap(buff &u8, hdr &aoefv.AOEFFheader) SymbTableType {
 	symbTableStart := u32(hdr.hSymbOff)
 	symbTableSize := u32(hdr.hSymbSize)
 
-	for i in 0 .. symbTableSize-1 {
+	for i in 0 .. symbTableSize {
 		symbEntryOffset := symbTableStart + u32(i * sizeof(aoefv.AOEFFSymbEntry))
 		symbEntry := unsafe { &aoefv.AOEFFSymbEntry(buff + int(symbEntryOffset)) }
 
