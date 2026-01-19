@@ -51,7 +51,7 @@ fn runCompiler() !void {
 // Process of compiling a target:
 // 1. Gather source files from sourceDirs and sources
 // 2. Apply compilerOptions, assemblerOptions, linkerOptions to the arxc command
-//   2.a Inject libraryDirs and libraries as needed to be linker options
+//   2.a Inject libraryDirs and libraries as needed
 //   2.b If type is library, inject -d as a linker option
 //   2.c If type is kernel, inject -k as a linker option
 // 3. Execute the arxc command to compile the target
@@ -106,14 +106,175 @@ fn gatherFiles(sourceDirs: []const []const u8, sources: ?[]const []const u8) !st
   return fileList;
 }
 
-fn buildAssemblerArgs() !void {
+const TargetType = enum {
+  Executable,
+  Library,
+  Kernel,
+};
 
+fn buildCompilerArgs(target: buildTypes.Target) ![]const u8 {
+  if (target.compilerOptions == null) {
+    return &[_]u8{};
+  }
+  if (target.compilerOptions.?.len == 0) {
+    return &[_]u8{};
+  }
+
+  const compilerOptions = target.compilerOptions.?;
+
+  var argsList = try std.ArrayList([]const u8).initCapacity(allocator, 4);
+  defer argsList.deinit(allocator);
+
+  for (compilerOptions) |opt| {
+    if (std.mem.eql(u8, opt, "g")) {
+      try argsList.append(allocator, "-g");
+    } else if (std.mem.eql(u8, opt, "W") or std.mem.eql(u8, opt, "no-warn")) {
+      try argsList.append(allocator, "--no-warn");
+    } else if (std.mem.eql(u8, opt, "F") or std.mem.eql(u8, opt, "fatal-warning")) {
+      try argsList.append(allocator, "--fatal-warning");
+    } else {
+      debug(DbgLvl.DBG_BASIC, "Invalid compiler option: {s}\n", .{opt});
+      continue;
+    }
+  }
+
+  return try std.mem.join(allocator, " ", argsList.items);
 }
 
-fn executableProgram(target: buildTypes.Target, outbin: []const u8) !void {
-  debug(DbgLvl.DBG_DETAIL, "Compiling executable program: {s}.arx\n", .{target.name.?});
+fn buildAssemblerArgs(target: buildTypes.Target) ![]const u8 {
+  if (target.assemblerOptions == null) {
+    return &[_]u8{};
+  }
+  if (target.assemblerOptions.?.len == 0) {
+    return &[_]u8{};
+  }
 
-  var files = try gatherFiles(target.sourceDirs.?, target.sources);
+  const assemblerOptions = target.assemblerOptions.?;
+
+  var argsList = try std.ArrayList([]const u8).initCapacity(allocator, 4);
+  defer argsList.deinit(allocator);
+
+  for (assemblerOptions) |opt| {
+    if (!(std.mem.eql(u8, opt, "t") or
+          std.mem.eql(u8, opt, "m") or
+          std.mem.eql(u8, opt, "p") or
+          std.mem.eql(u8, opt, "f"))) {
+      debug(DbgLvl.DBG_BASIC, "Invalid assembler option: {s}\n", .{opt});
+      continue;
+    }
+    try argsList.append(allocator, opt);
+  }
+
+  const joined = try std.mem.join(allocator, ",", argsList.items);
+  defer allocator.free(joined);
+
+  return std.fmt.allocPrint(allocator, "--assembler={s}", .{joined});
+}
+
+fn buildLinkerArgs(target: buildTypes.Target, targetType: TargetType) ![]const u8 {
+  if (target.linkerOptions == null) {
+    return &[_]u8{};
+  }
+  if (target.linkerOptions.?.len == 0) {
+    return &[_]u8{};
+  }
+
+  const linkerOptions = target.linkerOptions.?;
+
+  var argsList = try std.ArrayList([]const u8).initCapacity(allocator, 4);
+  defer argsList.deinit(allocator);
+
+  var hasK = false;
+  var hasD = false;
+
+  for (linkerOptions) |opt| {
+    // Exes only allow no-stdlib
+    // Libs only allow no-stdlib and d
+    // Kernels only allow no-stdlib and k
+
+    switch (targetType) {
+      .Executable => {
+        if (std.mem.eql(u8, opt, "k") or std.mem.eql(u8, opt, "d")) {
+          debug(DbgLvl.DBG_BASIC, "Linker option '{s}' is invalid for executable targets.\n", .{opt});
+          continue;
+        }
+      },
+      .Library => {
+        if (std.mem.eql(u8, opt, "k")) {
+          debug(DbgLvl.DBG_BASIC, "Linker option 'k' is invalid for library targets.\n", .{});
+          continue;
+        }
+        hasD = if (std.mem.eql(u8, opt, "d")) true else hasD;
+      },
+      .Kernel => {
+        if (std.mem.eql(u8, opt, "d")) {
+          debug(DbgLvl.DBG_BASIC, "Linker option 'd' is invalid for kernel targets.\n", .{});
+          continue;
+        }
+        hasK = if (std.mem.eql(u8, opt, "k")) true else hasK;
+      },
+    }
+
+    try argsList.append(allocator, opt);
+  }
+
+  // Inject options based on target type
+  if (targetType == .Library) {
+    if (!hasD) {
+      try argsList.append(allocator, "d");
+    }
+  } else if (targetType == .Kernel) {
+    if (!hasK) {
+      try argsList.append(allocator, "k");
+    }
+  }
+
+  const joined = try std.mem.join(allocator, ",", argsList.items);
+  defer allocator.free(joined);
+
+  return std.fmt.allocPrint(allocator, "--linker={s}", .{joined});
+}
+
+fn buildLibDirArgs(target: buildTypes.Target) ![]const u8 {
+  // Build the libdir args
+  // The form will be "-Llibdir0,libdir1,libdir2,..."
+
+  if (target.libraryDirs == null) {
+    return &[_]u8{};
+  }
+  if (target.libraryDirs.?.len == 0) {
+    return &[_]u8{};
+  }
+
+  const libraryDirs = target.libraryDirs.?;
+
+  const joined = try std.mem.join(allocator, ",", libraryDirs);
+  defer allocator.free(joined);
+
+  return std.fmt.allocPrint(allocator, "-L{s}", .{joined});
+}
+
+fn buildLibArgs(target: buildTypes.Target) ![]const u8 {
+  // Build the lib args
+  // The form will be "-llib0,lib1,lib2,..."
+
+  if (target.libraries == null) {
+    return &[_]u8{};
+  }
+  if (target.libraries.?.len == 0) {
+    return &[_]u8{};
+  }
+
+  const libraries = target.libraries.?;
+
+  const joined = try std.mem.join(allocator, ",", libraries);
+  defer allocator.free(joined);
+
+  return std.fmt.allocPrint(allocator, "-l{s}", .{joined});
+}
+
+fn buildProgram(target: buildTypes.Target, outbin: []const u8, targetType: TargetType) !void {
+var files = try gatherFiles(target.sourceDirs.?, target.sources);
   defer files.deinit(allocator);
 
   debug(DbgLvl.DBG_TRACE, "Source files to compile:\n", .{});
@@ -121,15 +282,8 @@ fn executableProgram(target: buildTypes.Target, outbin: []const u8) !void {
     debug(DbgLvl.DBG_TRACE, " - {s}\n", .{file});
   }
 
-  // var compilerOptsStr: []u8 = &[_]u8{};
-  // var assemblerOptsStr: []u8 = &[_]u8{};
-  // var linkerOptsStr: []u8 = &[_]u8{};
-
-  // debug(DbgLvl.DBG_TRACE, "Compiler options: {s}\n", .{compilerOptsStr});
-  // debug(DbgLvl.DBG_TRACE, "Assembler options: {s}\n", .{assemblerOptsStr});
-  // debug(DbgLvl.DBG_TRACE, "Linker options: {s}\n", .{linkerOptsStr});
-
-  // arxc ...files -o outbin ...compiler-options --assembler=f,p --linker=no-stdlib,k
+  // Format of the command:
+  // arxc ...files -o outbin ...compiler-options --assembler=f,p,.. --linker=no-stdlib,k,.. -Llibdir0,libdir1,... -llib0,lib1,...
 
   var cmdList = try std.ArrayList([]const u8).initCapacity(allocator, 8);
   defer cmdList.deinit(allocator);
@@ -151,10 +305,31 @@ fn executableProgram(target: buildTypes.Target, outbin: []const u8) !void {
   try cmdList.append(allocator, "-o");
   try cmdList.append(allocator, output);
 
+  const compilerArgs = try buildCompilerArgs(target);
+  try cmdList.append(allocator, compilerArgs);
+
+  const assemblerArgs = try buildAssemblerArgs(target);
+  try cmdList.append(allocator, assemblerArgs);
+
+  const linkerArgs = try buildLinkerArgs(target, targetType);
+  try cmdList.append(allocator, linkerArgs);
+
+  const libdirArgs = try buildLibDirArgs(target);
+  try cmdList.append(allocator, libdirArgs);
+
+  const libArgs = try buildLibArgs(target);
+  try cmdList.append(allocator, libArgs);
+
   // Execute the process and wait for it to finish
   const argv = cmdList.items;
 
-  // var cmfBuf: [1024]u8 = undefined;
+  // View argv for debugging
+  debug(DbgLvl.DBG_TRACE, "Compiler command:\n", .{});
+  for (argv) |arg| {
+    debug(DbgLvl.DBG_TRACE, " {s}", .{arg});
+  }
+  debug(DbgLvl.DBG_TRACE, "\n", .{});
+
   var proc = std.process.Child.init(argv, allocator);
   proc.spawn() catch |err| {
     debug(DbgLvl.DBG_BASIC, "Failed to spawn compiler process: {}\n", .{err});
@@ -170,19 +345,6 @@ fn executableProgram(target: buildTypes.Target, outbin: []const u8) !void {
     return;
   }
 }
-
-fn libraryProgram(target: buildTypes.Target, outbin: []const u8) !void {
-  debug(DbgLvl.DBG_DETAIL, "Compiling library program: {s}.adlib\n", .{target.name.?});
-  // Implement compilation logic here
-  _ = outbin;
-}
-
-fn kernelProgram(target: buildTypes.Target, outbin: []const u8) !void {
-  debug(DbgLvl.DBG_DETAIL, "Compiling kernel program: {s}.ark\n", .{target.name.?});
-  // Implement compilation logic here
-  _ = outbin;
-}
-
 
 pub fn build(targetName: []const u8) !void {
   clr = Chameleon.initRuntime(.{ .allocator = allocator });
@@ -306,13 +468,16 @@ pub fn build(targetName: []const u8) !void {
 
   if (std.mem.eql(u8, target.type.?, "executable")) {
     debug(DbgLvl.DBG_DETAIL, "Target is an executable.\n", .{});
-    try executableProgram(target, outbin);
+    debug(DbgLvl.DBG_DETAIL, "Compiling executable program: {s}.arx\n", .{target.name.?});
+    try buildProgram(target, outbin, .Executable);
   } else if (std.mem.eql(u8, target.type.?, "library")) {
     debug(DbgLvl.DBG_DETAIL, "Target is a library.\n", .{});
-    try libraryProgram(target, outbin);
+    debug(DbgLvl.DBG_DETAIL, "Compiling library program: {s}.adlib\n", .{target.name.?});
+    try buildProgram(target, outbin, .Library);
   } else if (std.mem.eql(u8, target.type.?, "kernel")) {
     debug(DbgLvl.DBG_DETAIL, "Target is a kernel.\n", .{});
-    try kernelProgram(target, outbin);
+    debug(DbgLvl.DBG_DETAIL, "Compiling kernel program: {s}.ark\n", .{target.name.?});
+    try buildProgram(target, outbin, .Kernel);
   } else {
     debug(DbgLvl.DBG_BASIC, "Unknown target type: {s}\n", .{target.type.?});
     return;
