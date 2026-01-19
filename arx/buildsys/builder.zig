@@ -44,18 +44,6 @@ fn debug(lvl: DbgLvl, comptime fmt: []const u8, fmtargs: anytype) void {
 }
 
 
-fn runCompiler() !void {
-
-}
-
-// Process of compiling a target:
-// 1. Gather source files from sourceDirs and sources
-// 2. Apply compilerOptions, assemblerOptions, linkerOptions to the arxc command
-//   2.a Inject libraryDirs and libraries as needed
-//   2.b If type is library, inject -d as a linker option
-//   2.c If type is kernel, inject -k as a linker option
-// 3. Execute the arxc command to compile the target
-
 fn gatherFiles(sourceDirs: []const []const u8, sources: ?[]const []const u8) !std.ArrayList([]const u8) {
   var fileList = try std.ArrayList([]const u8).initCapacity(allocator, 6);
   // Gather files from sourceDirs
@@ -186,6 +174,7 @@ fn buildLinkerArgs(target: buildTypes.Target, targetType: TargetType) ![]const u
 
   var hasK = false;
   var hasD = false;
+  var hasNoStdlib = false;
 
   for (linkerOptions) |opt| {
     // Exes only allow no-stdlib
@@ -212,6 +201,7 @@ fn buildLinkerArgs(target: buildTypes.Target, targetType: TargetType) ![]const u
           continue;
         }
         hasK = if (std.mem.eql(u8, opt, "k")) true else hasK;
+        hasNoStdlib = if (std.mem.eql(u8, opt, "no-stdlib")) true else hasNoStdlib;
       },
     }
 
@@ -226,6 +216,9 @@ fn buildLinkerArgs(target: buildTypes.Target, targetType: TargetType) ![]const u
   } else if (targetType == .Kernel) {
     if (!hasK) {
       try argsList.append(allocator, "k");
+    }
+    if (!hasNoStdlib) {
+      try argsList.append(allocator, "no-stdlib");
     }
   }
 
@@ -296,12 +289,19 @@ var files = try gatherFiles(target.sourceDirs.?, target.sources);
   }
 
   // Add output binary
-  // Output binary is [outbin]/[target].arx
-  var outputPathBuf = try allocator.alloc(u8, outbin.len + 1 + target.name.?.len + 4);
+  var outputPathBuf = try allocator.alloc(u8, outbin.len + 1 + target.name.?.len + 6);
   defer allocator.free(outputPathBuf);
-  outputPathBuf = std.fs.path.join(allocator, &.{ outbin, "/" }) catch outputPathBuf;
-  outputPathBuf = std.mem.concat(allocator, u8, &.{target.name.?, ".arx"}) catch outputPathBuf;
+  outputPathBuf = try std.fs.path.join(allocator, &.{ outbin, "/" }); // catch outputPathBuf;
+  debug(DbgLvl.DBG_TRACE, "Output binary base path: {s}\n", .{outputPathBuf});
+  outputPathBuf = std.mem.concat(
+    allocator, u8, &.{
+      outputPathBuf,
+      target.bin.?,
+      if (targetType == .Executable) ".arx" else if (targetType == .Library) ".adlib" else ".ark"
+    }
+  ) catch outputPathBuf;
   const output = outputPathBuf;
+  debug(DbgLvl.DBG_TRACE, "Output binary path: {s}\n", .{output});
   try cmdList.append(allocator, "-o");
   try cmdList.append(allocator, output);
 
@@ -356,8 +356,7 @@ pub fn build(targetName: []const u8) !void {
 
   debug(DbgLvl.DBG_BASIC, "Starting build process...\n", .{});
 
-  // Read build.ziggy file (needs to be in cwd), alternative name is build.zgy
-  // Try build.ziggy first, then build.zgy
+  // Read build.zgy file (needs to be in cwd)
   const buildFilePath = "build.zgy";
 
   const file = std.fs.cwd().openFile(buildFilePath, .{ .mode = .read_only }) catch |err| {
@@ -382,7 +381,7 @@ pub fn build(targetName: []const u8) !void {
   zbuf[buildFile.len] = 0;
   const buildFileZ: [:0]const u8 = zbuf[0..buildFile.len:0];
 
-  // Parse build.ziggy
+  // Parse build.zgy
   var diagnostic = ziggy.Diagnostic{.path = null };
   const buildDoc = ziggy.parseLeaky(buildTypes.Document, arena, buildFileZ, .{.diagnostic = &diagnostic}) catch |err| {
     switch (err) {
