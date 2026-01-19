@@ -1,0 +1,30 @@
+.{
+  .name = .arx,
+
+  .version = "0.0.0",
+
+  .fingerprint = 0xf5839a7f8dd6a8d0, // Changing this has security and trust implications.
+
+  .minimum_zig_version = "0.15.2",
+
+  .dependencies = .{
+    .yazap = .{
+      .url = "git+https://github.com/prajwalch/yazap#3d352f2e37a2173c30ce574a6a01fd78925e6376",
+      .hash = "yazap-0.6.3-Z1t-Emj0AQBBvc9AGu8J1QQytNkKy3XacVwWABEDRMd6",
+    },
+    .chameleon = .{
+      .url = "git+https://github.com/tr1ckydev/chameleon#414169dede742d9ac8261d31b9fca6e31a1d7246",
+      .hash = "chameleon-2.0.1-ZOxajZ17AADmYCpHFqqoGfaXQiRkXM8B5lYJfir9tqsz",
+    },
+    .ziggy = .{
+      .url = "git+https://github.com/kristoff-it/ziggy.git#83fe52030a1a6b7c6d1ddf9740f46068566ae5cd",
+      .hash = "ziggy-0.1.0-kTg8v5pABgDztlefWHceH-Sh8tVveguFC61QkmLkIRaA",
+    },
+  },
+
+  .paths = .{
+    "build.zig",
+    "build.zig.zon",
+    "src",
+  },
+}
