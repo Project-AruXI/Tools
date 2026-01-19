@@ -161,7 +161,7 @@ fn parseArgs() !void {
     debug(DbgLvl.DBG_BASIC, "Building project...\n", .{});
     builder.build(targetName) catch |err| {
       try stdout.print("Error building project: {}\n", .{err});
-      return err;
+      return;
     };
   }
 }

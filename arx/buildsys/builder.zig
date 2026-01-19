@@ -221,18 +221,20 @@ pub fn build(targetName: []const u8) !void {
   const buildFileZ: [:0]const u8 = zbuf[0..buildFile.len:0];
 
   // Parse build.ziggy
-  const buildDoc = ziggy.parseLeaky(buildTypes.Document, arena, buildFileZ, .{}) catch |err| {
+  var diagnostic = ziggy.Diagnostic{.path = null };
+  const buildDoc = ziggy.parseLeaky(buildTypes.Document, arena, buildFileZ, .{.diagnostic = &diagnostic}) catch |err| {
     switch (err) {
-      ziggy.Parser.Error.Syntax => |syntaxErr| {
-        try stdout.print("Syntax error in {s}: {}\n", .{buildFilePath, syntaxErr});
+      ziggy.Parser.Error.Syntax => |_| {
+        try stdout.print("Syntax error in {s}: {f}\n", .{buildFilePath, diagnostic.fmt(buildFileZ)});
         try stdout.flush();
+        return;
       },
       else => { return err; }
     }
 
     try stdout.print("Error parsing {s}: {}\n", .{buildFilePath, err});
     try stdout.flush();
-    return err;
+    return;
   };
 
   // Check that name and targets are present
